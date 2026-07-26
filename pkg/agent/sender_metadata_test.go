@@ -68,7 +68,8 @@ func TestSenderMetadataInjectionPayloadsStayOutOfSystem(t *testing.T) {
 			if err := json.Unmarshal([]byte(parts[0]), &metadata); err != nil {
 				t.Fatalf("metadata is not valid JSON: %v (%q)", err, parts[0])
 			}
-			if strings.ContainsAny(metadata.DisplayName, "\r\n\t\x00") || strings.ContainsRune(metadata.DisplayName, '\u202e') {
+			if strings.ContainsAny(metadata.DisplayName, "\r\n\t\x00") ||
+				strings.ContainsRune(metadata.DisplayName, '\u202e') {
 				t.Fatalf("display name controls were not normalized: %q", metadata.DisplayName)
 			}
 			if utf8.RuneCountInString(metadata.DisplayName) > maxSenderDisplayNameRunes {

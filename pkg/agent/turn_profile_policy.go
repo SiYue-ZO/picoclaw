@@ -39,16 +39,6 @@ func turnProfileCustomSkills(profile config.EffectiveTurnProfile) bool {
 	return profile.Enabled && profile.SkillsMode == config.TurnProfileModeCustom
 }
 
-func turnProfileHasCallableTools(
-	profile config.EffectiveTurnProfile,
-	defs []providers.ToolDefinition,
-) bool {
-	if !profile.Enabled {
-		return true
-	}
-	return len(filterToolsByTurnProfile(defs, profile)) > 0
-}
-
 func turnProfileToolAllowed(profile config.EffectiveTurnProfile, name string) bool {
 	if !profile.Enabled {
 		return true

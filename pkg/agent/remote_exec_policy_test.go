@@ -59,6 +59,7 @@ func (t *recordingExecTool) Parameters() map[string]any {
 		"required": []string{"action", "command"},
 	}
 }
+
 func (t *recordingExecTool) Execute(ctx context.Context, _ map[string]any) *tools.ToolResult {
 	t.executions++
 	t.approved = tools.RemoteToolApproved(ctx, "exec")
@@ -74,7 +75,10 @@ func (h fixedApprovalHook) ApproveTool(
 	return ApprovalDecision{Approved: h.approved, Reason: "test decision"}, nil
 }
 
-func remoteExecTestLoop(t *testing.T, allowRemote, requireApproval bool) (*AgentLoop, *forgedExecProvider, *recordingExecTool) {
+func remoteExecTestLoop(
+	t *testing.T,
+	allowRemote, requireApproval bool,
+) (*AgentLoop, *forgedExecProvider, *recordingExecTool) {
 	t.Helper()
 	cfg := &config.Config{
 		Agents: config.AgentsConfig{Defaults: config.AgentDefaults{
