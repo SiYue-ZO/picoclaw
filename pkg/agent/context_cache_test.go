@@ -126,7 +126,7 @@ func TestSingleSystemMessage(t *testing.T) {
 	}
 }
 
-func TestBuildMessages_CurrentSenderDynamicContext(t *testing.T) {
+func TestBuildMessages_CurrentSenderUsesUserRoleMetadata(t *testing.T) {
 	tmpDir := setupWorkspace(t, map[string]string{
 		"IDENTITY.md": "# Identity\nTest agent.",
 	})
@@ -138,31 +138,28 @@ func TestBuildMessages_CurrentSenderDynamicContext(t *testing.T) {
 		name              string
 		senderID          string
 		senderDisplayName string
-		wantLine          string
-		wantSection       bool
+		wantSenderID      string
+		wantDisplayName   string
 	}{
 		{
 			name:              "both id and display name",
 			senderID:          "feishu:ou_xxx",
 			senderDisplayName: "Zhang San",
-			wantLine:          "Current sender: Zhang San (ID: feishu:ou_xxx)",
-			wantSection:       true,
+			wantSenderID:      `"sender_id":"feishu:ou_xxx"`,
+			wantDisplayName:   `"display_name":"Zhang San"`,
 		},
 		{
 			name:              "display name only",
 			senderDisplayName: "Alice",
-			wantLine:          "Current sender: Alice",
-			wantSection:       true,
+			wantDisplayName:   `"display_name":"Alice"`,
 		},
 		{
-			name:        "id only",
-			senderID:    "discord:123",
-			wantLine:    "Current sender: discord:123",
-			wantSection: true,
+			name:         "id only",
+			senderID:     "discord:123",
+			wantSenderID: `"sender_id":"discord:123"`,
 		},
 		{
-			name:        "no sender info",
-			wantSection: false,
+			name: "no sender info",
 		},
 	}
 
@@ -170,19 +167,22 @@ func TestBuildMessages_CurrentSenderDynamicContext(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			msgs := cb.BuildMessages(nil, "", "hello", nil, "discord", "chat1", tt.senderID, tt.senderDisplayName)
 			sys := msgs[0].Content
-
-			if tt.wantSection {
-				if !strings.Contains(sys, "## Current Sender") {
-					t.Fatalf("system prompt missing Current Sender section:\n%s", sys)
-				}
-				if !strings.Contains(sys, tt.wantLine) {
-					t.Fatalf("system prompt missing sender line %q:\n%s", tt.wantLine, sys)
-				}
-				return
+			if strings.Contains(sys, "## Current Sender") || strings.Contains(sys, "## Current Session") ||
+				(tt.senderID != "" && strings.Contains(sys, tt.senderID)) ||
+				(tt.senderDisplayName != "" && strings.Contains(sys, tt.senderDisplayName)) {
+				t.Fatalf("external identity leaked into system prompt:\n%s", sys)
 			}
 
-			if strings.Contains(sys, "## Current Sender") {
-				t.Fatalf("system prompt should omit Current Sender section:\n%s", sys)
+			user := msgs[len(msgs)-1]
+			if user.Role != "user" || !strings.Contains(user.Content, senderMetadataHeader) ||
+				!strings.HasSuffix(user.Content, userMessageHeader+"\nhello") {
+				t.Fatalf("user message missing sender metadata envelope: %#v", user)
+			}
+			if tt.wantSenderID != "" && !strings.Contains(user.Content, tt.wantSenderID) {
+				t.Fatalf("user metadata missing %q: %s", tt.wantSenderID, user.Content)
+			}
+			if tt.wantDisplayName != "" && !strings.Contains(user.Content, tt.wantDisplayName) {
+				t.Fatalf("user metadata missing %q: %s", tt.wantDisplayName, user.Content)
 			}
 		})
 	}
@@ -731,8 +731,9 @@ func TestBuildMessages_IncludesMediaOnlyCurrentMessage(t *testing.T) {
 	if userMsg.Role != "user" {
 		t.Fatalf("userMsg.Role = %q, want %q", userMsg.Role, "user")
 	}
-	if userMsg.Content != "" {
-		t.Fatalf("userMsg.Content = %q, want empty string", userMsg.Content)
+	if !strings.Contains(userMsg.Content, senderMetadataHeader) ||
+		!strings.HasSuffix(userMsg.Content, userMessageHeader+"\n") {
+		t.Fatalf("userMsg.Content = %q, want metadata envelope with empty body", userMsg.Content)
 	}
 	if len(userMsg.Media) != 1 || userMsg.Media[0] != "data:image/png;base64,abc123" {
 		t.Fatalf("userMsg.Media = %#v, want image payload", userMsg.Media)

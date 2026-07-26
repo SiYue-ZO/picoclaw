@@ -2,6 +2,7 @@ package toolshared
 
 import (
 	"context"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/session"
 )
@@ -50,6 +51,7 @@ var (
 	ctxKeyAgentID          = &toolCtxKey{"agentID"}
 	ctxKeySessionKey       = &toolCtxKey{"sessionKey"}
 	ctxKeySessionScope     = &toolCtxKey{"sessionScope"}
+	ctxKeyRemoteApprovals  = &toolCtxKey{"remoteApprovals"}
 )
 
 // WithToolContext returns a child context carrying channel and chatID.
@@ -86,6 +88,35 @@ func WithToolSessionContext(
 	ctx = context.WithValue(ctx, ctxKeySessionKey, sessionKey)
 	ctx = context.WithValue(ctx, ctxKeySessionScope, session.CloneScope(scope))
 	return ctx
+}
+
+// WithRemoteToolApproval records a deterministic approval result for one tool
+// invocation. The set is copied on write so request contexts remain immutable
+// across concurrent tool calls.
+func WithRemoteToolApproval(ctx context.Context, toolName string) context.Context {
+	toolName = strings.ToLower(strings.TrimSpace(toolName))
+	if toolName == "" {
+		return ctx
+	}
+	approvals := make(map[string]struct{})
+	if current, ok := ctx.Value(ctxKeyRemoteApprovals).(map[string]struct{}); ok {
+		for name := range current {
+			approvals[name] = struct{}{}
+		}
+	}
+	approvals[toolName] = struct{}{}
+	return context.WithValue(ctx, ctxKeyRemoteApprovals, approvals)
+}
+
+// RemoteToolApproved reports whether an independent runtime approver approved
+// this exact tool invocation.
+func RemoteToolApproved(ctx context.Context, toolName string) bool {
+	approvals, ok := ctx.Value(ctxKeyRemoteApprovals).(map[string]struct{})
+	if !ok {
+		return false
+	}
+	_, ok = approvals[strings.ToLower(strings.TrimSpace(toolName))]
+	return ok
 }
 
 // ToolChannel extracts the channel from ctx, or "" if unset.

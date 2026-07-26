@@ -216,7 +216,7 @@ func TestTurnProfile_ProcessMessageUsesEnabledTurnProfile(t *testing.T) {
 	if len(provider.messages) != 2 {
 		t.Fatalf("provider messages len = %d, want system + current user", len(provider.messages))
 	}
-	if provider.messages[1].Content != "hello from pico" {
+	if !strings.HasSuffix(provider.messages[1].Content, userMessageHeader+"\nhello from pico") {
 		t.Fatalf("current message = %q, want hello from pico", provider.messages[1].Content)
 	}
 }

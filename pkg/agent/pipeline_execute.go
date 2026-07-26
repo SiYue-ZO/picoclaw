@@ -131,12 +131,8 @@ toolLoop:
 
 		toolName := tc.Name
 		toolArgs := cloneStringAnyMap(tc.Arguments)
-		denyByTurnProfile := func() bool {
-			if turnProfileToolAllowed(ts.profile, toolName) {
-				return false
-			}
+		denyTool := func(denyContent string) {
 			exec.allResponsesHandled = false
-			denyContent := fmt.Sprintf("Tool %q is not allowed by the active turn profile.", toolName)
 			al.emitEvent(
 				runtimeevents.KindAgentToolExecSkipped,
 				ts.eventMeta("runTurn", "turn.tool.skipped"),
@@ -155,10 +151,21 @@ toolLoop:
 				ts.agent.Sessions.AddFullMessage(ts.sessionKey, deniedMsg)
 				ts.recordPersistedMessage(deniedMsg)
 			}
+		}
+		denyByTurnPolicy := func() bool {
+			allowed, reason := toolAllowedForTurn(al.cfg, ts.profile, ts.channel, toolName)
+			if allowed {
+				return false
+			}
+			denyContent := fmt.Sprintf("Tool %q denied by runtime policy: %s.", toolName, reason)
+			if reason == "tool is not allowed by the active turn profile" {
+				denyContent = fmt.Sprintf("Tool %q is not allowed by the active turn profile.", toolName)
+			}
+			denyTool(denyContent)
 			return true
 		}
 
-		if denyByTurnProfile() {
+		if denyByTurnPolicy() {
 			continue
 		}
 
@@ -177,6 +184,10 @@ toolLoop:
 				}
 			case HookActionRespond:
 				if toolReq != nil && toolReq.HookResult != nil {
+					if remoteExecRequiresApproval(al.cfg, ts.channel, toolName) {
+						denyTool("Remote exec hook responses cannot bypass independent approval.")
+						continue toolLoop
+					}
 					hookResult := toolReq.HookResult
 
 					argsJSON, _ := json.Marshal(toolArgs)
@@ -436,6 +447,19 @@ toolLoop:
 			}
 		}
 
+		// Hooks may rewrite the tool name. Re-apply both turn-profile and
+		// channel-origin policy after the rewrite to prevent policy bypass.
+		if denyByTurnPolicy() {
+			continue
+		}
+
+		remoteApprovalRequired := remoteExecRequiresApproval(al.cfg, ts.channel, toolName)
+		remoteApprovalGranted := false
+		if remoteApprovalRequired && (al.hooks == nil || !al.hooks.HasToolApprover()) {
+			denyTool("Remote exec requires an independent approval hook, but none is configured.")
+			continue
+		}
+
 		if al.hooks != nil {
 			approval := al.hooks.ApproveTool(turnCtx, &ToolApprovalRequest{
 				Meta:      ts.eventMeta("runTurn", "turn.tool.approve"),
@@ -466,9 +490,10 @@ toolLoop:
 				}
 				continue
 			}
+			remoteApprovalGranted = remoteApprovalRequired
 		}
 
-		if denyByTurnProfile() {
+		if denyByTurnPolicy() {
 			continue
 		}
 
@@ -567,6 +592,9 @@ toolLoop:
 			ts.sessionKey,
 			ts.opts.Dispatch.SessionScope,
 		)
+		if remoteApprovalGranted {
+			execCtx = tools.WithRemoteToolApproval(execCtx, toolName)
+		}
 		toolResult := ts.agent.Tools.ExecuteWithContext(
 			execCtx,
 			toolName,

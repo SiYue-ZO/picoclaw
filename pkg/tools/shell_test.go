@@ -376,11 +376,13 @@ func TestShellTool_EmptyChannelBlockedWhenNotAllowRemote(t *testing.T) {
 	}
 }
 
-// TestShellTool_AllowRemoteBypassesChannelCheck verifies allowRemote=true permits any channel
-func TestShellTool_AllowRemoteBypassesChannelCheck(t *testing.T) {
+// TestShellTool_AllowRemoteWithoutApprovalRequirementPermitsRemote verifies the
+// explicit compatibility escape hatch when approval enforcement is disabled.
+func TestShellTool_AllowRemoteWithoutApprovalRequirementPermitsRemote(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Tools.Exec.EnableDenyPatterns = true
 	cfg.Tools.Exec.AllowRemote = true
+	cfg.Tools.Exec.RequireApprovalForRemote = false
 
 	tool, err := NewExecToolWithConfig("", false, cfg)
 	if err != nil {
@@ -391,6 +393,65 @@ func TestShellTool_AllowRemoteBypassesChannelCheck(t *testing.T) {
 
 	if result.IsError {
 		t.Fatalf("expected allowRemote=true to permit remote channel, got: %s", result.ForLLM)
+	}
+}
+
+func TestShellTool_RemoteApprovalIsEnforcedAtExecutionBoundary(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Tools.Exec.AllowRemote = true
+	cfg.Tools.Exec.RequireApprovalForRemote = true
+
+	tool, err := NewExecToolWithConfig("", false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig() error: %v", err)
+	}
+	ctx := WithToolContext(context.Background(), "telegram", "chat-1")
+	args := map[string]any{"action": "run", "command": "echo hi"}
+	if result := tool.Execute(ctx, args); !result.IsError ||
+		!strings.Contains(result.ForLLM, "requires independent approval") {
+		t.Fatalf("remote exec without approval = %#v, want denial", result)
+	}
+
+	approvedCtx := WithRemoteToolApproval(ctx, "exec")
+	result := tool.Execute(approvedCtx, args)
+	if result.IsError || !strings.Contains(result.ForLLM, "hi") {
+		t.Fatalf("approved remote exec = %#v, want success", result)
+	}
+}
+
+func TestShellTool_MissingChannelFailsClosedEvenWhenRemoteEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Tools.Exec.AllowRemote = true
+	cfg.Tools.Exec.RequireApprovalForRemote = false
+
+	tool, err := NewExecToolWithConfig("", false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig() error: %v", err)
+	}
+	result := tool.Execute(context.Background(), map[string]any{
+		"action": "run", "command": "echo hi",
+	})
+	if !result.IsError || !strings.Contains(result.ForLLM, "requires channel context") {
+		t.Fatalf("missing-channel exec = %#v, want fail-closed denial", result)
+	}
+}
+
+func TestShellTool_ArgumentsCannotSpoofInternalChannel(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Tools.Exec.AllowRemote = true
+	cfg.Tools.Exec.RequireApprovalForRemote = false
+
+	tool, err := NewExecToolWithConfig("", false, cfg)
+	if err != nil {
+		t.Fatalf("NewExecToolWithConfig() error: %v", err)
+	}
+	result := tool.Execute(context.Background(), map[string]any{
+		"action":    "run",
+		"command":   "echo hi",
+		"__channel": "cli",
+	})
+	if !result.IsError || !strings.Contains(result.ForLLM, "requires channel context") {
+		t.Fatalf("spoofed-channel exec = %#v, want fail-closed denial", result)
 	}
 }
 

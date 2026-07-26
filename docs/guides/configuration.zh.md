@@ -333,11 +333,12 @@ PicoClaw 默认在沙箱环境中运行。Agent 只能访问配置的工作区�
 | 配置键 | 类型 | 默认值 | 描述 |
 |--------|------|--------|------|
 | `tools.exec.allow_remote` | bool | `false` | 允许从远程渠道（Telegram/Discord 等）执行 exec 工具 |
+| `tools.exec.require_approval_for_remote` | bool | `true` | 每次远程 exec 操作都必须通过独立审批 hook |
 | `tools.exec.enable_deny_patterns` | bool | `true` | 启用危险命令拦截 |
 | `tools.exec.custom_deny_patterns` | string[] | `[]` | 自定义阻止的正则表达式模式 |
 | `tools.exec.custom_allow_patterns` | string[] | `[]` | 自定义允许的正则表达式模式 |
 
-> **安全提示：** Symlink 保护默认启用——所有文件路径在允许列表匹配前都会通过 `filepath.EvalSymlinks` 解析，防止符号链接逃逸攻击。
+> **安全提示：** `allow_remote=true` 是显式的高风险选项。`require_approval_for_remote=true` 时若没有配置审批 hook，远程 exec 会默认拒绝。命令拒绝规则只是防护栏，并非完整沙箱。Symlink 保护默认启用——所有文件路径在允许列表匹配前都会通过 `filepath.EvalSymlinks` 解析，防止符号链接逃逸攻击。
 
 #### 已知限制：构建工具的子进程
 

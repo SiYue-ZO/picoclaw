@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -98,11 +99,45 @@ func NewAgentLoop(
 	al.hooks = NewHookManager(al.runtimeEvents.Channel())
 	configureHookManagerFromConfig(al.hooks, cfg)
 	al.contextManager = al.resolveContextManager()
+	logRemoteExecSecurityWarnings(cfg)
 
 	// Register shared tools to all agents (now that al is created)
 	registerSharedTools(al, cfg, msgBus, registry, provider)
 
 	return al
+}
+
+func logRemoteExecSecurityWarnings(cfg *config.Config) {
+	if cfg == nil || !cfg.Tools.Exec.Enabled || !cfg.Tools.Exec.AllowRemote {
+		return
+	}
+	logger.WarnCF("security", "HIGH RISK: exec is enabled for remote channels", map[string]any{
+		"require_approval_for_remote": cfg.Tools.Exec.RequireApprovalForRemote,
+		"restrict_to_workspace":       cfg.Agents.Defaults.RestrictToWorkspace,
+		"deny_patterns_enabled":       cfg.Tools.Exec.EnableDenyPatterns,
+		"warning":                     "deny patterns are not a complete sandbox",
+	})
+
+	for name, channel := range cfg.Channels {
+		if channel == nil || !channel.Enabled {
+			continue
+		}
+		openAllowlist := len(channel.AllowFrom) == 0
+		for _, allowed := range channel.AllowFrom {
+			if strings.TrimSpace(allowed) == "*" {
+				openAllowlist = true
+				break
+			}
+		}
+		if !openAllowlist {
+			continue
+		}
+		logger.WarnCF("security", "CRITICAL: open remote channel can request exec", map[string]any{
+			"channel":      name,
+			"channel_type": channel.Type,
+			"allow_from":   channel.AllowFrom,
+		})
+	}
 }
 
 func registerSharedTools(

@@ -125,6 +125,45 @@ func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }
 
+func TestMigrateV3ToV4_ExecRemotePolicy(t *testing.T) {
+	tests := []struct {
+		name            string
+		exec            map[string]any
+		wantAllowRemote bool
+		wantApproval    bool
+	}{
+		{
+			name:            "omitted values become fail closed defaults",
+			exec:            map[string]any{"enable_deny_patterns": true},
+			wantAllowRemote: false,
+			wantApproval:    true,
+		},
+		{
+			name: "explicit high risk values are preserved",
+			exec: map[string]any{
+				"allow_remote":                true,
+				"require_approval_for_remote": false,
+			},
+			wantAllowRemote: true,
+			wantApproval:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := map[string]any{
+				"version": 3,
+				"tools":   map[string]any{"exec": tt.exec},
+			}
+			require.NoError(t, migrateV3ToV4(m))
+			require.Equal(t, CurrentVersion, m["version"])
+			execMap := m["tools"].(map[string]any)["exec"].(map[string]any)
+			require.Equal(t, tt.wantAllowRemote, execMap["allow_remote"])
+			require.Equal(t, tt.wantApproval, execMap["require_approval_for_remote"])
+		})
+	}
+}
+
 func searchString(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {
@@ -172,6 +211,8 @@ func TestMigrateV0ToV3(t *testing.T) {
 	err = migrateV1ToV2(m)
 	require.NoError(t, err)
 	err = migrateV2ToV3(m)
+	require.NoError(t, err)
+	err = migrateV3ToV4(m)
 	require.NoError(t, err)
 
 	// Version should be set to CurrentVersion
@@ -231,6 +272,8 @@ func TestMigrateV0ToV3_WithExistingModelList(t *testing.T) {
 	require.NoError(t, err)
 	err = migrateV2ToV3(m)
 	require.NoError(t, err)
+	err = migrateV3ToV4(m)
+	require.NoError(t, err)
 
 	// Existing model_list should be preserved (not overridden by providers)
 	modelList := m["model_list"].([]any)
@@ -272,6 +315,8 @@ func TestMigrateV1ToV3(t *testing.T) {
 	err = migrateV1ToV2(m)
 	require.NoError(t, err)
 	err = migrateV2ToV3(m)
+	require.NoError(t, err)
+	err = migrateV3ToV4(m)
 	require.NoError(t, err)
 
 	// Version should be set to CurrentVersion
@@ -335,6 +380,8 @@ func TestMigrateV1ToV3_ApiKeyConversion(t *testing.T) {
 	require.NoError(t, err)
 	err = migrateV2ToV3(m)
 	require.NoError(t, err)
+	err = migrateV3ToV4(m)
+	require.NoError(t, err)
 
 	// api_key should be converted to api_keys array
 	modelList := m["model_list"].([]any)
@@ -384,6 +431,8 @@ func TestMigrateV1ToV3_AlreadyNestedFormat(t *testing.T) {
 	err = migrateV1ToV2(m)
 	require.NoError(t, err)
 	err = migrateV2ToV3(m)
+	require.NoError(t, err)
+	err = migrateV3ToV4(m)
 	require.NoError(t, err)
 
 	channelList := m["channel_list"].(map[string]any)

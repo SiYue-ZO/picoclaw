@@ -25,7 +25,7 @@ import (
 var rrCounter atomic.Uint64
 
 // CurrentVersion is the latest config schema version
-const CurrentVersion = 3
+const CurrentVersion = 4
 
 func init() {
 	initChannel()
@@ -1061,12 +1061,13 @@ type CronToolsConfig struct {
 }
 
 type ExecConfig struct {
-	ToolConfig          `         envPrefix:"PICOCLAW_TOOLS_EXEC_"`
-	EnableDenyPatterns  bool     `                                 json:"enable_deny_patterns"  env:"PICOCLAW_TOOLS_EXEC_ENABLE_DENY_PATTERNS"`
-	AllowRemote         bool     `                                 json:"allow_remote"          env:"PICOCLAW_TOOLS_EXEC_ALLOW_REMOTE"`
-	CustomDenyPatterns  []string `                                 json:"custom_deny_patterns"  env:"PICOCLAW_TOOLS_EXEC_CUSTOM_DENY_PATTERNS"`
-	CustomAllowPatterns []string `                                 json:"custom_allow_patterns" env:"PICOCLAW_TOOLS_EXEC_CUSTOM_ALLOW_PATTERNS"`
-	TimeoutSeconds      int      `                                 json:"timeout_seconds"       env:"PICOCLAW_TOOLS_EXEC_TIMEOUT_SECONDS"` // 0 means use default (60s)
+	ToolConfig               `         envPrefix:"PICOCLAW_TOOLS_EXEC_"`
+	EnableDenyPatterns       bool     `                                 json:"enable_deny_patterns"       env:"PICOCLAW_TOOLS_EXEC_ENABLE_DENY_PATTERNS"`
+	AllowRemote              bool     `                                 json:"allow_remote"               env:"PICOCLAW_TOOLS_EXEC_ALLOW_REMOTE"`
+	RequireApprovalForRemote bool     `                                 json:"require_approval_for_remote" env:"PICOCLAW_TOOLS_EXEC_REQUIRE_APPROVAL_FOR_REMOTE"`
+	CustomDenyPatterns       []string `                                 json:"custom_deny_patterns"       env:"PICOCLAW_TOOLS_EXEC_CUSTOM_DENY_PATTERNS"`
+	CustomAllowPatterns      []string `                                 json:"custom_allow_patterns"      env:"PICOCLAW_TOOLS_EXEC_CUSTOM_ALLOW_PATTERNS"`
+	TimeoutSeconds           int      `                                 json:"timeout_seconds"            env:"PICOCLAW_TOOLS_EXEC_TIMEOUT_SECONDS"` // 0 means use default (60s)
 }
 
 type SkillsToolsConfig struct {
@@ -1359,6 +1360,10 @@ func LoadConfig(path string) (*Config, error) {
 		if migrateErr != nil {
 			return nil, fmt.Errorf("V2→V3 migration failed: %w", migrateErr)
 		}
+		migrateErr = migrateV3ToV4(m)
+		if migrateErr != nil {
+			return nil, fmt.Errorf("V3→V4 migration failed: %w", migrateErr)
+		}
 
 		var migrated []byte
 		migrated, err = json.Marshal(m)
@@ -1413,6 +1418,10 @@ func LoadConfig(path string) (*Config, error) {
 		if migrateErr != nil {
 			return nil, fmt.Errorf("V2→V3 migration failed: %w", migrateErr)
 		}
+		migrateErr = migrateV3ToV4(m)
+		if migrateErr != nil {
+			return nil, fmt.Errorf("V3→V4 migration failed: %w", migrateErr)
+		}
 
 		var migrated []byte
 		migrated, err = json.Marshal(m)
@@ -1465,6 +1474,10 @@ func LoadConfig(path string) (*Config, error) {
 		if migrateErr != nil {
 			return nil, fmt.Errorf("V2→V3 migration failed: %w", migrateErr)
 		}
+		migrateErr = migrateV3ToV4(m)
+		if migrateErr != nil {
+			return nil, fmt.Errorf("V3→V4 migration failed: %w", migrateErr)
+		}
 
 		var migrated []byte
 		migrated, err = json.Marshal(m)
@@ -1482,6 +1495,46 @@ func LoadConfig(path string) (*Config, error) {
 			return nil, err
 		}
 
+		defer func(cfg *Config) {
+			_ = SaveConfig(path, cfg)
+		}(cfg)
+		logger.InfoF(
+			"config migrate success",
+			map[string]any{"from": versionInfo.Version, "to": CurrentVersion},
+		)
+	case 3:
+		logger.InfoF(
+			"config migrate start",
+			map[string]any{"from": versionInfo.Version, "to": CurrentVersion},
+		)
+		if err = validateLegacyConfigDiagnostics(data); err != nil {
+			logger.ErrorCF(
+				"config",
+				formatDiagnosticLogMessage("Failed to load config", err),
+				map[string]any{"path": path},
+			)
+			return nil, err
+		}
+		var m map[string]any
+		m, err = loadConfigMap(path)
+		if err != nil {
+			return nil, err
+		}
+		if migrateErr := migrateV3ToV4(m); migrateErr != nil {
+			return nil, fmt.Errorf("V3→V4 migration failed: %w", migrateErr)
+		}
+		var migrated []byte
+		migrated, err = json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		cfg, err = loadConfig(migrated)
+		if err != nil {
+			return nil, err
+		}
+		if err = MakeBackup(path); err != nil {
+			return nil, err
+		}
 		defer func(cfg *Config) {
 			_ = SaveConfig(path, cfg)
 		}(cfg)

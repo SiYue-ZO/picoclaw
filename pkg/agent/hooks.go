@@ -27,7 +27,7 @@ type HookAction string
 const (
 	HookActionContinue  HookAction = "continue"
 	HookActionModify    HookAction = "modify"
-	HookActionRespond   HookAction = "respond" // Return result directly, skip tool execution. SECURITY: This bypasses ApproveTool checks, allowing hooks to return results for any tool (including sensitive ones like bash) without approval. Use with caution.
+	HookActionRespond   HookAction = "respond" // Return a trusted hook result directly, skipping tool execution. Remote exec responses are still blocked when independent approval is required.
 	HookActionDenyTool  HookAction = "deny_tool"
 	HookActionAbortTurn HookAction = "abort_turn"
 	HookActionHardAbort HookAction = "hard_abort"
@@ -559,6 +559,18 @@ func (hm *HookManager) ApproveTool(ctx context.Context, req *ToolApprovalRequest
 	}
 
 	return ApprovalDecision{Approved: true}
+}
+
+func (hm *HookManager) HasToolApprover() bool {
+	if hm == nil {
+		return false
+	}
+	for _, reg := range hm.snapshotHooks() {
+		if _, ok := reg.Hook.(ToolApprover); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (hm *HookManager) rebuildOrdered() {

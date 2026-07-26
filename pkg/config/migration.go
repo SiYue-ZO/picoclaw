@@ -396,6 +396,37 @@ func migrateV2ToV3(m map[string]any) error {
 		m["channel_list"] = channels
 	}
 
+	m["version"] = 3
+
+	return nil
+}
+
+// migrateV3ToV4 changes the remote exec defaults at a schema boundary. Existing
+// explicit values are preserved; omitted values are materialized with the new
+// fail-closed defaults so subsequent saves cannot accidentally restore the old
+// behavior.
+func migrateV3ToV4(m map[string]any) error {
+	if !compareInt(m["version"], 3) {
+		return fmt.Errorf("migrateV3ToV4: expected version 3, got %v", m["version"])
+	}
+
+	toolsMap, ok := m["tools"].(map[string]any)
+	if !ok {
+		toolsMap = make(map[string]any)
+		m["tools"] = toolsMap
+	}
+	execMap, ok := toolsMap["exec"].(map[string]any)
+	if !ok {
+		execMap = make(map[string]any)
+		toolsMap["exec"] = execMap
+	}
+	if _, explicit := execMap["allow_remote"]; !explicit {
+		execMap["allow_remote"] = false
+	}
+	if _, explicit := execMap["require_approval_for_remote"]; !explicit {
+		execMap["require_approval_for_remote"] = true
+	}
+
 	m["version"] = CurrentVersion
 
 	return nil

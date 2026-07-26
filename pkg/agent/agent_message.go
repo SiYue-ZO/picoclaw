@@ -130,13 +130,17 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 	} else {
 		logContent = utils.Truncate(msg.Content, 80)
 	}
+	logChannel := normalizeUntrustedIdentityText(msg.Channel, maxPlatformRunes)
+	logChatID := normalizeUntrustedIdentityText(msg.ChatID, maxChatIDRunes)
+	logSenderID := normalizeUntrustedIdentityText(msg.SenderID, maxSenderIDRunes)
+	logContent = normalizeUntrustedIdentityText(logContent, 2048)
 	logger.InfoCF(
 		"agent",
-		fmt.Sprintf("Processing message from %s:%s: %s", msg.Channel, msg.SenderID, logContent),
+		fmt.Sprintf("Processing message from %s:%s: %s", logChannel, logSenderID, logContent),
 		map[string]any{
-			"channel":     msg.Channel,
-			"chat_id":     msg.ChatID,
-			"sender_id":   msg.SenderID,
+			"channel":     logChannel,
+			"chat_id":     logChatID,
+			"sender_id":   logSenderID,
 			"session_key": msg.SessionKey,
 		},
 	)
@@ -188,6 +192,7 @@ func (al *AgentLoop) processMessage(ctx context.Context, msg bus.InboundMessage)
 		},
 		SenderID:                msg.SenderID,
 		SenderDisplayName:       msg.Sender.DisplayName,
+		Sender:                  msg.Sender,
 		DefaultResponse:         defaultResponse,
 		EnableSummary:           true,
 		SendResponse:            false,

@@ -515,7 +515,7 @@ func TestLoadConfig_EvolutionEnabledWithoutModeUsesObserveSemantics(t *testing.T
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
 	raw := `{
-		"version": 3,
+		"version": 4,
 		"evolution": {
 			"enabled": true
 		}
@@ -540,7 +540,7 @@ func TestLoadConfig_EvolutionExplicitApplyModeAutoApplies(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
 	raw := `{
-		"version": 3,
+		"version": 4,
 		"evolution": {
 			"enabled": true,
 			"mode": "apply"
@@ -1317,8 +1317,11 @@ func TestConfig_Complete(t *testing.T) {
 	if !cfg.Heartbeat.Enabled {
 		t.Error("Heartbeat should be enabled by default")
 	}
-	if !cfg.Tools.Exec.AllowRemote {
-		t.Error("Exec.AllowRemote should be true by default")
+	if cfg.Tools.Exec.AllowRemote {
+		t.Error("Exec.AllowRemote should be false by default")
+	}
+	if !cfg.Tools.Exec.RequireApprovalForRemote {
+		t.Error("Exec.RequireApprovalForRemote should be true by default")
 	}
 }
 
@@ -1484,10 +1487,13 @@ func TestLoadConfig_UnknownFieldsReportsExactPaths(t *testing.T) {
 	}
 }
 
-func TestDefaultConfig_ExecAllowRemoteEnabled(t *testing.T) {
+func TestDefaultConfig_ExecRemotePolicyIsFailClosed(t *testing.T) {
 	cfg := DefaultConfig()
-	if !cfg.Tools.Exec.AllowRemote {
-		t.Fatal("DefaultConfig().Tools.Exec.AllowRemote should be true")
+	if cfg.Tools.Exec.AllowRemote {
+		t.Fatal("DefaultConfig().Tools.Exec.AllowRemote should be false")
+	}
+	if !cfg.Tools.Exec.RequireApprovalForRemote {
+		t.Fatal("DefaultConfig().Tools.Exec.RequireApprovalForRemote should be true")
 	}
 }
 
@@ -1605,7 +1611,7 @@ func TestDefaultConfig_LogLevel(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_ExecAllowRemoteDefaultsTrueWhenUnset(t *testing.T) {
+func TestLoadConfig_ExecRemotePolicyDefaultsFailClosedWhenUnset(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.json")
 	if err := os.WriteFile(configPath, []byte(`{"version":1,"tools":{"exec":{"enable_deny_patterns":true}}}`),
@@ -1617,8 +1623,11 @@ func TestLoadConfig_ExecAllowRemoteDefaultsTrueWhenUnset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error: %v", err)
 	}
-	if !cfg.Tools.Exec.AllowRemote {
-		t.Fatal("tools.exec.allow_remote should remain true when unset in config file")
+	if cfg.Tools.Exec.AllowRemote {
+		t.Fatal("tools.exec.allow_remote should be false when unset in config file")
+	}
+	if !cfg.Tools.Exec.RequireApprovalForRemote {
+		t.Fatal("tools.exec.require_approval_for_remote should be true when unset")
 	}
 }
 

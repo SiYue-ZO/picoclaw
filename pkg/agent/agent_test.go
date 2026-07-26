@@ -479,7 +479,7 @@ func TestPublishPicoReasoningIncludesSessionKey(t *testing.T) {
 	}
 }
 
-func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
+func TestProcessMessage_PutsCurrentSenderInUserRoleMetadata(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -501,7 +501,7 @@ func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
 	provider := &recordingProvider{}
 	al := NewAgentLoop(cfg, msgBus, provider)
 
-	response, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+	msg := testInboundMessage(bus.InboundMessage{
 		Channel:  "discord",
 		SenderID: "discord:123",
 		Sender: bus.SenderInfo{
@@ -509,7 +509,14 @@ func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
 		},
 		ChatID:  "group-1",
 		Content: "hello",
-	}))
+	})
+	route, _, err := al.resolveMessageRoute(msg)
+	if err != nil {
+		t.Fatalf("resolveMessageRoute() error = %v", err)
+	}
+	sessionKey := resolveScopeKey(al.allocateRouteSession(route, msg).SessionKey, msg.SessionKey)
+
+	response, err := al.processMessage(context.Background(), msg)
 	if err != nil {
 		t.Fatalf("processMessage() error = %v", err)
 	}
@@ -521,14 +528,21 @@ func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
 	}
 
 	systemPrompt := provider.lastMessages[0].Content
-	wantSender := "## Current Sender\nCurrent sender: Alice (ID: discord:123)"
-	if !strings.Contains(systemPrompt, wantSender) {
-		t.Fatalf("system prompt missing sender context %q:\n%s", wantSender, systemPrompt)
+	if strings.Contains(systemPrompt, "Alice") || strings.Contains(systemPrompt, "discord:123") ||
+		strings.Contains(systemPrompt, "## Current Sender") || strings.Contains(systemPrompt, "## Current Session") {
+		t.Fatalf("external sender/session data leaked into system prompt:\n%s", systemPrompt)
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "hello" {
-		t.Fatalf("last provider message = %+v, want unchanged user message", lastMessage)
+	if lastMessage.Role != "user" || !strings.Contains(lastMessage.Content, `"display_name":"Alice"`) ||
+		!strings.Contains(lastMessage.Content, `"sender_id":"discord:123"`) ||
+		!strings.HasSuffix(lastMessage.Content, userMessageHeader+"\nhello") {
+		t.Fatalf("last provider message = %+v, want user-role sender envelope", lastMessage)
+	}
+
+	history := al.GetRegistry().GetDefaultAgent().Sessions.GetHistory(sessionKey)
+	if len(history) < 1 || history[0].Role != "user" || history[0].Content != "hello" {
+		t.Fatalf("stored user history = %#v, want original body without metadata envelope", history)
 	}
 }
 
@@ -1079,7 +1093,9 @@ func TestProcessMessage_UseCommandLoadsRequestedSkill(t *testing.T) {
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "explain how to list files" {
+	if lastMessage.Role != "user" || !strings.HasSuffix(
+		lastMessage.Content, userMessageHeader+"\nexplain how to list files",
+	) {
 		t.Fatalf("last provider message = %+v, want rewritten user message", lastMessage)
 	}
 }
@@ -1150,7 +1166,9 @@ func TestProcessMessage_BtwCommandRunsWithoutPersistingHistory(t *testing.T) {
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "explain side effects" {
+	if lastMessage.Role != "user" || !strings.HasSuffix(
+		lastMessage.Content, userMessageHeader+"\nexplain side effects",
+	) {
 		t.Fatalf("last provider message = %+v, want stripped /btw question", lastMessage)
 	}
 
@@ -1199,16 +1217,15 @@ func TestProcessMessage_BtwCommandIncludesRequestContextAndMedia(t *testing.T) {
 	}
 
 	systemPrompt := provider.lastMessages[0].Content
-	if !strings.Contains(systemPrompt, "## Current Session\nChannel: discord\nChat ID: group-1") {
-		t.Fatalf("system prompt missing current session context:\n%s", systemPrompt)
-	}
-	if !strings.Contains(systemPrompt, "## Current Sender\nCurrent sender: Alice (ID: discord:123)") {
-		t.Fatalf("system prompt missing current sender context:\n%s", systemPrompt)
+	if strings.Contains(systemPrompt, "discord") || strings.Contains(systemPrompt, "group-1") ||
+		strings.Contains(systemPrompt, "Alice") || strings.Contains(systemPrompt, "discord:123") {
+		t.Fatalf("external sender/session data leaked into system prompt:\n%s", systemPrompt)
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "describe this image" {
-		t.Fatalf("last provider message = %+v, want stripped /btw question", lastMessage)
+	if lastMessage.Role != "user" || !strings.Contains(lastMessage.Content, `"chat_id":"group-1"`) ||
+		!strings.HasSuffix(lastMessage.Content, userMessageHeader+"\ndescribe this image") {
+		t.Fatalf("last provider message = %+v, want enveloped stripped /btw question", lastMessage)
 	}
 	if !reflect.DeepEqual(lastMessage.Media, []string{"media://image-1"}) {
 		t.Fatalf("last provider media = %#v, want media ref", lastMessage.Media)
@@ -1273,7 +1290,9 @@ func TestProcessMessage_BtwCommandUsesIsolatedProvider(t *testing.T) {
 
 	// Verify the question was stripped of /btw prefix
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "explain isolation" {
+	if lastMessage.Role != "user" || !strings.HasSuffix(
+		lastMessage.Content, userMessageHeader+"\nexplain isolation",
+	) {
 		t.Fatalf("last provider message = %+v, want stripped /btw question", lastMessage)
 	}
 
@@ -1506,7 +1525,9 @@ func TestProcessMessage_UseCommandArmsSkillForNextMessage(t *testing.T) {
 		t.Fatalf("system prompt missing pending skill content:\n%s", systemPrompt)
 	}
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
-	if lastMessage.Role != "user" || lastMessage.Content != "explain how to list files" {
+	if lastMessage.Role != "user" || !strings.HasSuffix(
+		lastMessage.Content, userMessageHeader+"\nexplain how to list files",
+	) {
 		t.Fatalf("last provider message = %+v, want unchanged follow-up user message", lastMessage)
 	}
 }

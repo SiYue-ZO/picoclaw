@@ -928,6 +928,18 @@ export function ExecSection({ form, onFieldChange }: ExecSectionProps) {
             onCheckedChange={(checked) => onFieldChange("allowRemote", checked)}
           />
 
+          {form.allowRemote && (
+            <SwitchCardField
+              label={t("pages.config.require_approval_for_remote")}
+              hint={t("pages.config.require_approval_for_remote_hint")}
+              layout="setting-row"
+              checked={form.requireApprovalForRemote}
+              onCheckedChange={(checked) =>
+                onFieldChange("requireApprovalForRemote", checked)
+              }
+            />
+          )}
+
           <SwitchCardField
             label={t("pages.config.enable_deny_patterns")}
             hint={t("pages.config.enable_deny_patterns_hint")}

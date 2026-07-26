@@ -78,8 +78,13 @@ func (h *Handler) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg.Session.ApplyDmScope()
 	cfg.Session.DeriveDmScope()
-	if execAllowRemoteOmitted(body) {
-		cfg.Tools.Exec.AllowRemote = config.DefaultConfig().Tools.Exec.AllowRemote
+	allowRemoteOmitted, requireApprovalOmitted := execRemotePolicyOmissions(body)
+	execDefaults := config.DefaultConfig().Tools.Exec
+	if allowRemoteOmitted {
+		cfg.Tools.Exec.AllowRemote = execDefaults.AllowRemote
+	}
+	if requireApprovalOmitted {
+		cfg.Tools.Exec.RequireApprovalForRemote = execDefaults.RequireApprovalForRemote
 	}
 
 	// Load existing config and copy security credentials before validation,
@@ -113,18 +118,22 @@ func (h *Handler) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-func execAllowRemoteOmitted(body []byte) bool {
+func execRemotePolicyOmissions(body []byte) (allowRemote, requireApproval bool) {
 	var raw struct {
 		Tools *struct {
 			Exec *struct {
-				AllowRemote *bool `json:"allow_remote"`
+				AllowRemote              *bool `json:"allow_remote"`
+				RequireApprovalForRemote *bool `json:"require_approval_for_remote"`
 			} `json:"exec"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return false
+		return false, false
 	}
-	return raw.Tools == nil || raw.Tools.Exec == nil || raw.Tools.Exec.AllowRemote == nil
+	if raw.Tools == nil || raw.Tools.Exec == nil {
+		return true, true
+	}
+	return raw.Tools.Exec.AllowRemote == nil, raw.Tools.Exec.RequireApprovalForRemote == nil
 }
 
 // handlePatchConfig partially updates the system configuration using JSON Merge Patch (RFC 7396).
@@ -364,15 +373,22 @@ func validateConfig(cfg *config.Config) []string {
 		}
 	}
 
-	// Telegram: token required when enabled
-	{
-		bc := cfg.Channels.GetByType(config.ChannelTelegram)
-		if bc != nil && bc.Enabled {
-			if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
-				if c, ok := decoded.(*config.TelegramSettings); ok && c.Token.String() == "" {
-					errs = append(errs, "channels.telegram.token is required when telegram channel is enabled")
-				}
+	// Telegram onboarding must be allowlisted. Runtime loading retains the
+	// legacy empty-list meaning for compatibility, but the Web setup flow does
+	// not create or save a newly open bot by accident.
+	for name, bc := range cfg.Channels {
+		if bc == nil || bc.Type != config.ChannelTelegram || !bc.Enabled {
+			continue
+		}
+		if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
+			if c, ok := decoded.(*config.TelegramSettings); ok && c.Token.String() == "" {
+				errs = append(errs, fmt.Sprintf(
+					"channel_list.%s.settings.token is required when telegram channel is enabled", name))
 			}
+		}
+		if len(bc.AllowFrom) == 0 {
+			errs = append(errs, fmt.Sprintf(
+				"channel_list.%s.allow_from requires at least one Telegram user ID when enabled", name))
 		}
 	}
 

@@ -37,7 +37,7 @@ func (p *Pipeline) CallLLM(
 	// PreLLM: graceful terminal handling
 	exec.gracefulTerminal, _ = ts.gracefulInterruptRequested()
 	exec.providerToolDefs = ts.agent.Tools.ToProviderDefs()
-	exec.providerToolDefs = filterToolsByTurnProfile(exec.providerToolDefs, ts.profile)
+	exec.providerToolDefs = filterToolsForTurn(p.Cfg, exec.providerToolDefs, ts.profile, ts.channel)
 
 	// Native web search support
 	webSearchEnabled := al.cfg.Tools.IsToolEnabled("web") && turnProfileToolAllowed(ts.profile, "web_search")
@@ -97,7 +97,7 @@ func (p *Pipeline) CallLLM(
 				prevModel := exec.llmModel
 				exec.llmModel = llmReq.Model
 				exec.callMessages = llmReq.Messages
-				exec.providerToolDefs = filterToolsByTurnProfile(llmReq.Tools, ts.profile)
+				exec.providerToolDefs = filterToolsForTurn(p.Cfg, llmReq.Tools, ts.profile, ts.channel)
 				exec.llmOpts = llmReq.Options
 				nativeSearchAllowed := exec.useNativeSearch &&
 					turnProfileToolAllowed(ts.profile, "web_search")

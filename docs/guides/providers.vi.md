@@ -279,7 +279,7 @@ Cấu hình `providers` cũ đã **bị deprecated** và đã được loại b�
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "model_list": [
     {
       "model_name": "glm-4.7",

@@ -26,7 +26,7 @@ The Telegram channel uses long polling via the Telegram Bot API for bot-based co
 | ---------------- | ------ | -------- | ------------------------------------------------------------------ |
 | enabled          | bool   | Yes      | Whether to enable the Telegram channel                             |
 | token            | string | Yes      | Telegram Bot API Token                                             |
-| allow_from       | array  | No       | Allowlist of user IDs; empty means all users are allowed           |
+| allow_from       | array  | Yes for new Web setups | Allowlist of user IDs; legacy empty lists still mean all users are allowed |
 | proxy            | string | No       | Proxy URL for connecting to the Telegram API (e.g. http://127.0.0.1:7890) |
 | use_markdown_v2 | bool   | No       | Enable Telegram MarkdownV2 formatting                              |
 | media_group_delay_ms | int | No       | Idle delay before processing Telegram media groups/albums. Defaults to 500 ms |
@@ -37,7 +37,9 @@ The Telegram channel uses long polling via the Telegram Bot API for bot-based co
 2. Send the `/newbot` command and follow the prompts to create a new bot
 3. Obtain the HTTP API Token
 4. Fill in the Token in the configuration file
-5. (Optional) Configure `allow_from` to restrict which user IDs can interact (you can get IDs via `@userinfobot`)
+5. Configure at least one `allow_from` user ID (you can get IDs via `@userinfobot`)
+
+> **Security:** An empty list or `"*"` exposes the bot to every Telegram user who can reach it. The Web setup flow therefore requires at least one ID. Legacy configuration files keep the old empty-list behavior for compatibility; add an allowlist before enabling the channel. Channel access control does not replace tool authorization, and remote `exec` remains disabled by default.
 
 ## Built-in Commands
 

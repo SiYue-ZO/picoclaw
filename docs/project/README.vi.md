@@ -351,7 +351,7 @@ Lệnh này tạo `~/.picoclaw/config.json` và thư mục workspace.
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "agents": {
     "defaults": {
       "model_name": "gpt-5.4"

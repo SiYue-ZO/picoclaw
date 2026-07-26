@@ -226,7 +226,7 @@ function isConfigured(
 function getRequiredFieldKeys(channelName: string): string[] {
   switch (channelName) {
     case "telegram":
-      return ["token"]
+      return ["token", "allow_from"]
     case "discord":
       return ["token"]
     case "slack":

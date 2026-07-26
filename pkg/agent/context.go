@@ -483,7 +483,7 @@ func (cb *ContextBuilder) EstimateSystemTokens(summary string, activeSkills []st
 	staticPrompt := cb.BuildSystemPromptWithCache()
 
 	// Dynamic context is small and varies per request; use a representative estimate.
-	// Actual buildDynamicContext produces ~200-400 chars of time/runtime/session info.
+	// Actual buildDynamicContext produces a small time/runtime block.
 	const dynamicContextChars = 300
 
 	totalChars := utf8.RuneCountInString(staticPrompt) + dynamicContextChars
@@ -775,45 +775,22 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return sb.String()
 }
 
-// buildDynamicContext returns a short dynamic context string with per-request info.
-// This changes every request (time, session) so it is NOT part of the cached prompt.
+// buildDynamicContext returns a short dynamic context string containing only
+// trusted, process-generated data. Externally supplied session and sender data
+// belongs in the current user message, never in a system-role message.
+// This changes every request so it is NOT part of the cached prompt.
 // LLM-side KV cache reuse is achieved by each provider adapter's native mechanism:
 //   - Anthropic: per-block cache_control (ephemeral) on the static SystemParts block
 //   - OpenAI / Codex: prompt_cache_key for prefix-based caching
 //
 // See: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
 // See: https://platform.openai.com/docs/guides/prompt-caching
-func formatCurrentSenderLine(senderID, senderDisplayName string) string {
-	senderID = strings.TrimSpace(senderID)
-	senderDisplayName = strings.TrimSpace(senderDisplayName)
-
-	switch {
-	case senderDisplayName != "" && senderID != "":
-		return fmt.Sprintf("Current sender: %s (ID: %s)", senderDisplayName, senderID)
-	case senderDisplayName != "":
-		return fmt.Sprintf("Current sender: %s", senderDisplayName)
-	case senderID != "":
-		return fmt.Sprintf("Current sender: %s", senderID)
-	default:
-		return ""
-	}
-}
-
-func (cb *ContextBuilder) buildDynamicContext(
-	channel, chatID, senderID, senderDisplayName string,
-) string {
+func (cb *ContextBuilder) buildDynamicContext() string {
 	now := time.Now().Format("2006-01-02 15:04 (Monday)")
 	rt := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Current Time\n%s\n\n## Runtime\n%s", now, rt)
-
-	if channel != "" && chatID != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
-	}
-	if senderLine := formatCurrentSenderLine(senderID, senderDisplayName); senderLine != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Sender\n%s", senderLine)
-	}
 
 	return sb.String()
 }
@@ -845,7 +822,7 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 	// The default static part (identity, bootstrap, skills, memory) is cached
 	// locally to avoid repeated file I/O and string building on every call
 	// (fixes issue #607). Profile-customized static prompts are built on demand.
-	// Dynamic parts (time, session, summary) are appended per request unless the
+	// Dynamic parts (time, runtime, summary) are appended per request unless the
 	// profile suppresses PicoClaw system context.
 	// Everything is sent as a single system message for provider compatibility:
 	// - Anthropic adapter extracts messages[0] (Role=="system") and maps its content
@@ -878,7 +855,9 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 		promptParts = append(promptParts, cb.buildActiveSkillsPromptParts(activeSkills)...)
 	}
 	if !req.SuppressDefaultSystemPrompt {
-		if contributedParts, err := cb.promptRegistryOrDefault().Collect(context.Background(), req); err != nil {
+		if contributedParts, err := cb.promptRegistryOrDefault().Collect(
+			context.Background(), promptRequestForSystemContributors(req),
+		); err != nil {
 			logger.WarnCF("agent", "Prompt contributor collection failed", map[string]any{
 				"error": err.Error(),
 			})
@@ -909,13 +888,8 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 
 	dynamicChars := 0
 	if !req.SuppressDefaultSystemPrompt {
-		// Build short dynamic context (time, runtime, session) — changes per request
-		dynamicCtx := cb.buildDynamicContext(
-			req.Channel,
-			req.ChatID,
-			req.SenderID,
-			req.SenderDisplayName,
-		)
+		// Build short dynamic context (time and runtime) — changes per request.
+		dynamicCtx := cb.buildDynamicContext()
 		dynamicChars = len(dynamicCtx)
 		runtimePart := PromptPart{
 			ID:      "context.runtime",
@@ -1011,7 +985,10 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 	// multimodal providers receive the uploaded image even when the user sends
 	// no accompanying text.
 	if strings.TrimSpace(req.CurrentMessage) != "" || len(req.Media) > 0 {
-		messages = append(messages, userPromptMessage(req.CurrentMessage, req.Media))
+		messages = append(messages, userPromptMessage(
+			buildUserMessageEnvelope(req),
+			req.Media,
+		))
 	}
 	if len(messages) == 0 {
 		messages = append(messages, userPromptMessage("", nil))

@@ -61,6 +61,14 @@ func WithToolSessionContext(
 	return toolshared.WithToolSessionContext(ctx, agentID, sessionKey, scope)
 }
 
+func WithRemoteToolApproval(ctx context.Context, toolName string) context.Context {
+	return toolshared.WithRemoteToolApproval(ctx, toolName)
+}
+
+func RemoteToolApproved(ctx context.Context, toolName string) bool {
+	return toolshared.RemoteToolApproved(ctx, toolName)
+}
+
 func ToolChannel(ctx context.Context) string {
 	return toolshared.ToolChannel(ctx)
 }

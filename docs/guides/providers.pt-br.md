@@ -279,7 +279,7 @@ A configuração antiga `providers` está **descontinuada** e foi removida no V2
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "model_list": [
     {
       "model_name": "glm-4.7",

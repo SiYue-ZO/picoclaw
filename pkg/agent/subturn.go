@@ -378,6 +378,7 @@ func spawnSubTurn(
 		Dispatch:                dispatch,
 		SenderID:                parentTS.opts.Dispatch.SenderID(),
 		SenderDisplayName:       parentTS.opts.SenderDisplayName,
+		Sender:                  parentTS.opts.Sender,
 		TurnProfile:             parentTS.profile,
 		SystemPromptOverride:    cfg.ActualSystemPrompt,
 		InitialSteeringMessages: cfg.InitialMessages,

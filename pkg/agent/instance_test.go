@@ -337,7 +337,8 @@ func TestNewAgentInstance_AllowsMediaTempDirForReadListAndExec(t *testing.T) {
 	if !ok {
 		t.Fatal("exec tool not registered")
 	}
-	execResult := execTool.Execute(context.Background(), map[string]any{
+	execCtx := tools.WithToolContext(context.Background(), "cli", "direct")
+	execResult := execTool.Execute(execCtx, map[string]any{
 		"action":  "run",
 		"command": "cat " + filepath.Base(mediaPath),
 		"cwd":     mediaDir,

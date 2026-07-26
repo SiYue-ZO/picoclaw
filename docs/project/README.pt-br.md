@@ -351,7 +351,7 @@ Isso cria `~/.picoclaw/config.json` e o diretório workspace.
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "agents": {
     "defaults": {
       "model_name": "gpt-5.4"

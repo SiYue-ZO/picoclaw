@@ -401,7 +401,7 @@ PicoClaw 按下面的规则解析 `provider` 和最终发给上游的模型 ID�
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "model_list": [
     {
       "model_name": "glm-4.7",

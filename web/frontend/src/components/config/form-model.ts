@@ -9,6 +9,7 @@ export interface CoreConfigForm {
   toolFeedbackSeparateMessages: boolean
   execEnabled: boolean
   allowRemote: boolean
+  requireApprovalForRemote: boolean
   enableDenyPatterns: boolean
   customDenyPatternsText: string
   customAllowPatternsText: string
@@ -119,7 +120,8 @@ export const EMPTY_FORM: CoreConfigForm = {
   toolFeedbackMaxArgsLength: "300",
   toolFeedbackSeparateMessages: false,
   execEnabled: true,
-  allowRemote: true,
+  allowRemote: false,
+  requireApprovalForRemote: true,
   enableDenyPatterns: true,
   customDenyPatternsText: "",
   customAllowPatternsText: "",
@@ -333,6 +335,10 @@ export function buildFormFromConfig(config: unknown): CoreConfigForm {
       exec.allow_remote === undefined
         ? EMPTY_FORM.allowRemote
         : asBool(exec.allow_remote),
+    requireApprovalForRemote:
+      exec.require_approval_for_remote === undefined
+        ? EMPTY_FORM.requireApprovalForRemote
+        : asBool(exec.require_approval_for_remote),
     enableDenyPatterns:
       exec.enable_deny_patterns === undefined
         ? EMPTY_FORM.enableDenyPatterns

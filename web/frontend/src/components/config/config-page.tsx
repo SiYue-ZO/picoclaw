@@ -559,6 +559,8 @@ export function ConfigPage() {
 
         if (form.execEnabled) {
           execConfigPatch.allow_remote = form.allowRemote
+          execConfigPatch.require_approval_for_remote =
+            form.requireApprovalForRemote
           execConfigPatch.enable_deny_patterns = form.enableDenyPatterns
           execConfigPatch.custom_allow_patterns = parseMultilineList(
             form.customAllowPatternsText,

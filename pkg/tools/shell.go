@@ -37,15 +37,17 @@ func getSessionManager() *SessionManager {
 }
 
 type ExecTool struct {
-	workingDir          string
-	timeout             time.Duration
-	denyPatterns        []*regexp.Regexp
-	allowPatterns       []*regexp.Regexp
-	customAllowPatterns []*regexp.Regexp
-	allowedPathPatterns []*regexp.Regexp
-	restrictToWorkspace bool
-	allowRemote         bool
-	sessionManager      *SessionManager
+	workingDir            string
+	timeout               time.Duration
+	denyPatterns          []*regexp.Regexp
+	allowPatterns         []*regexp.Regexp
+	customAllowPatterns   []*regexp.Regexp
+	allowedPathPatterns   []*regexp.Regexp
+	restrictToWorkspace   bool
+	enforceOriginPolicy   bool
+	allowRemote           bool
+	requireRemoteApproval bool
+	sessionManager        *SessionManager
 }
 
 var (
@@ -150,6 +152,7 @@ func NewExecToolWithConfig(
 	customAllowPatterns := make([]*regexp.Regexp, 0)
 	var allowedPathPatterns []*regexp.Regexp
 	allowRemote := true
+	requireRemoteApproval := true
 	if len(allowPaths) > 0 {
 		allowedPathPatterns = allowPaths[0]
 	}
@@ -158,6 +161,7 @@ func NewExecToolWithConfig(
 		execConfig := cfg.Tools.Exec
 		enableDenyPatterns := execConfig.EnableDenyPatterns
 		allowRemote = execConfig.AllowRemote
+		requireRemoteApproval = execConfig.RequireApprovalForRemote
 		if enableDenyPatterns {
 			denyPatterns = append(denyPatterns, defaultDenyPatterns...)
 			if runtime.GOOS == "windows" {
@@ -199,15 +203,17 @@ func NewExecToolWithConfig(
 	}
 
 	return &ExecTool{
-		workingDir:          workingDir,
-		timeout:             timeout,
-		denyPatterns:        denyPatterns,
-		allowPatterns:       nil,
-		customAllowPatterns: customAllowPatterns,
-		allowedPathPatterns: allowedPathPatterns,
-		restrictToWorkspace: restrict,
-		allowRemote:         allowRemote,
-		sessionManager:      getSessionManager(),
+		workingDir:            workingDir,
+		timeout:               timeout,
+		denyPatterns:          denyPatterns,
+		allowPatterns:         nil,
+		customAllowPatterns:   customAllowPatterns,
+		allowedPathPatterns:   allowedPathPatterns,
+		restrictToWorkspace:   restrict,
+		enforceOriginPolicy:   cfg != nil,
+		allowRemote:           allowRemote,
+		requireRemoteApproval: requireRemoteApproval,
+		sessionManager:        getSessionManager(),
 	}, nil
 }
 
@@ -271,6 +277,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 	if action == "" {
 		return ErrorResult("action is required")
 	}
+	if denied := t.authorizeOrigin(ctx); denied != nil {
+		return denied
+	}
 
 	switch action {
 	case "run":
@@ -292,23 +301,36 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]any) *ToolResult
 	}
 }
 
+func (t *ExecTool) authorizeOrigin(ctx context.Context) *ToolResult {
+	// The config-less constructor is retained for embedded/internal callers that
+	// supply their own authorization boundary. Runtime Agent instances always
+	// use NewExecToolWithConfig and therefore enforce this policy.
+	if !t.enforceOriginPolicy {
+		return nil
+	}
+	// GHSA-pv8c-p6jf-3fpp: block every exec action from remote channels
+	// (including background-session reads/writes) unless explicitly opted in.
+	// Missing origin context always fails closed, even when remote exec is enabled.
+	channel := strings.TrimSpace(ToolChannel(ctx))
+	if channel == "" {
+		return ErrorResult("exec requires channel context")
+	}
+	if constants.IsInternalChannel(channel) {
+		return nil
+	}
+	if !t.allowRemote {
+		return ErrorResult("exec is restricted to internal channels")
+	}
+	if t.requireRemoteApproval && !RemoteToolApproved(ctx, t.Name()) {
+		return ErrorResult("remote exec requires independent approval")
+	}
+	return nil
+}
+
 func (t *ExecTool) executeRun(ctx context.Context, args map[string]any) *ToolResult {
 	command, ok := args["command"].(string)
 	if !ok {
 		return ErrorResult("command is required")
-	}
-
-	// GHSA-pv8c-p6jf-3fpp: block exec from remote channels (e.g. Telegram webhooks)
-	// unless explicitly opted-in via config. Fail-closed: empty channel = blocked.
-	if !t.allowRemote {
-		channel := ToolChannel(ctx)
-		if channel == "" {
-			channel, _ = args["__channel"].(string)
-		}
-		channel = strings.TrimSpace(channel)
-		if channel == "" || !constants.IsInternalChannel(channel) {
-			return ErrorResult("exec is restricted to internal channels")
-		}
 	}
 
 	getBoolArg := func(key string) bool {

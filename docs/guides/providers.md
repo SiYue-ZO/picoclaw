@@ -507,7 +507,7 @@ The old `providers` configuration is **deprecated** and has been removed in V2. 
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "model_list": [
     {
       "model_name": "glm-4.7",

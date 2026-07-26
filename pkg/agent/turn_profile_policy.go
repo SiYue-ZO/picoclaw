@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/constants"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
@@ -113,6 +114,60 @@ func filterToolsByTurnProfile(
 	default:
 		return defs
 	}
+}
+
+func toolAllowedForTurn(
+	cfg *config.Config,
+	profile config.EffectiveTurnProfile,
+	channel, name string,
+) (bool, string) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !turnProfileToolAllowed(profile, name) {
+		return false, "tool is not allowed by the active turn profile"
+	}
+	if name != "exec" {
+		return true, ""
+	}
+
+	channel = strings.TrimSpace(channel)
+	if channel == "" {
+		return false, "exec requires channel context"
+	}
+	if constants.IsInternalChannel(channel) {
+		return true, ""
+	}
+	if cfg == nil || !cfg.Tools.Exec.AllowRemote {
+		return false, "exec is restricted to internal channels"
+	}
+	return true, ""
+}
+
+func filterToolsForTurn(
+	cfg *config.Config,
+	defs []providers.ToolDefinition,
+	profile config.EffectiveTurnProfile,
+	channel string,
+) []providers.ToolDefinition {
+	filtered := filterToolsByTurnProfile(defs, profile)
+	if len(filtered) == 0 {
+		return filtered
+	}
+	out := make([]providers.ToolDefinition, 0, len(filtered))
+	for _, def := range filtered {
+		if allowed, _ := toolAllowedForTurn(cfg, profile, channel, def.Function.Name); allowed {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+func remoteExecRequiresApproval(cfg *config.Config, channel, name string) bool {
+	if cfg == nil || !cfg.Tools.Exec.RequireApprovalForRemote ||
+		!strings.EqualFold(strings.TrimSpace(name), "exec") {
+		return false
+	}
+	channel = strings.TrimSpace(channel)
+	return channel != "" && !constants.IsInternalChannel(channel)
 }
 
 func cleanAllowedSet(values []string) map[string]struct{} {

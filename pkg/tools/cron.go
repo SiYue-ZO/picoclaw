@@ -618,13 +618,12 @@ func (t *CronTool) ExecuteJob(ctx context.Context, job *cron.CronJob) string {
 		}
 
 		args := map[string]any{
-			"action":    "run",
-			"command":   job.Payload.Command,
-			"__channel": channel,
-			"__chat_id": chatID,
+			"action":  "run",
+			"command": job.Payload.Command,
 		}
 
-		result := t.execTool.Execute(ctx, args)
+		execCtx := WithToolContext(ctx, channel, chatID)
+		result := t.execTool.Execute(execCtx, args)
 		var output string
 		if result.IsError {
 			output = fmt.Sprintf("Error executing scheduled command: %s", result.ForLLM)

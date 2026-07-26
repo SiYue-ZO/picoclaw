@@ -92,8 +92,9 @@ type processOptions struct {
 	ChatID                  string          // Target chat ID for tool execution
 	MessageID               string          // Current inbound platform message ID
 	ReplyToMessageID        string          // Current inbound reply target message ID
-	SenderID                string          // Current sender ID for dynamic context
-	SenderDisplayName       string          // Current sender display name for dynamic context
+	SenderID                string          // Legacy sender ID mirror for user-role metadata
+	SenderDisplayName       string          // Legacy display-name mirror for user-role metadata
+	Sender                  bus.SenderInfo  // Structured sender identity for user-role metadata
 	UserMessage             string          // User message content (may include prefix)
 	ForcedSkills            []string        // Skills explicitly requested for this message
 	TurnProfile             config.EffectiveTurnProfile

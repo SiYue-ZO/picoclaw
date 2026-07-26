@@ -137,7 +137,7 @@ func assertGatewayLogLevelApplied(t *testing.T, method, body string, want logger
 	}
 }
 
-func TestHandleUpdateConfig_PreservesExecAllowRemoteDefaultWhenOmitted(t *testing.T) {
+func TestHandleUpdateConfig_UsesFailClosedExecRemoteDefaultsWhenOmitted(t *testing.T) {
 	configPath, cleanup := setupOAuthTestEnv(t)
 	defer cleanup()
 
@@ -146,7 +146,7 @@ func TestHandleUpdateConfig_PreservesExecAllowRemoteDefaultWhenOmitted(t *testin
 	h.RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodPut, "/api/config", bytes.NewBufferString(`{
-"version": 3,
+"version": 4,
 		"agents": {
 			"defaults": {
 				"workspace": "~/.picoclaw/workspace"
@@ -172,8 +172,11 @@ func TestHandleUpdateConfig_PreservesExecAllowRemoteDefaultWhenOmitted(t *testin
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if !cfg.Tools.Exec.AllowRemote {
-		t.Fatal("tools.exec.allow_remote should remain true when omitted from PUT /api/config")
+	if cfg.Tools.Exec.AllowRemote {
+		t.Fatal("tools.exec.allow_remote should be false when omitted from PUT /api/config")
+	}
+	if !cfg.Tools.Exec.RequireApprovalForRemote {
+		t.Fatal("tools.exec.require_approval_for_remote should default to true when omitted")
 	}
 }
 

@@ -291,7 +291,7 @@ PicoClaw はリクエスト送信前に外側の `litellm/` プレフィック�
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "model_list": [
     {
       "model_name": "glm-4.7",

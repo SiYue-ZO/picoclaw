@@ -106,6 +106,8 @@ export function TelegramForm({
           <ChannelArrayListField
             label={t("channels.field.allowFrom")}
             hint={t("channels.form.desc.allowFrom")}
+            error={fieldErrors.allow_from}
+            required
             value={asStringArray(config.allow_from)}
             onChange={(value) => onChange("allow_from", value)}
             placeholder={t("channels.field.allowFromPlaceholder")}
